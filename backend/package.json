@@ -1,0 +1,42 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "dependencies": {
+    "accepts": "^1.3.8",
+    "base64id": "^2.0.0",
+    "bcryptjs": "^3.0.3",
+    "cookie": "^0.7.2",
+    "cors": "^2.8.6",
+    "debug": "^4.4.3",
+    "dotenv": "^17.3.1",
+    "engine.io": "^6.6.5",
+    "engine.io-parser": "^5.2.3",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mime-db": "^1.52.0",
+    "mime-types": "^2.1.35",
+    "mongoose": "^9.2.1",
+    "ms": "^2.1.3",
+    "negotiator": "^0.6.3",
+    "object-assign": "^4.1.1",
+    "socket.io": "^4.8.3",
+    "socket.io-adapter": "^2.5.6",
+    "socket.io-parser": "^4.2.5",
+    "undici-types": "^7.16.0",
+    "vary": "^1.1.2",
+    "ws": "^8.18.3"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node --watch server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
