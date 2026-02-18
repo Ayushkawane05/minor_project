@@ -22,7 +22,8 @@ export const getProblems = async (req, res) => {
   try {
     const problems = await Problem.find()
       .populate("raisedBy", "name email")
-      .populate("acceptedBy", "name email");
+      .populate("acceptedBy", "name email")
+      .populate("solution");
 
     res.json(problems);
   } catch (error) {

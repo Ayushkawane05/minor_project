@@ -101,6 +101,14 @@ problemSchema.set("toJSON", { virtuals: true });
 problemSchema.set("toObject", { virtuals: true });
 
 
+// Virtual for solution
+problemSchema.virtual("solution", {
+  ref: "Solution",
+  localField: "_id",
+  foreignField: "problem",
+  justOne: true,
+});
+
 const Problem = mongoose.model("Problem", problemSchema);
 
 export default Problem;
