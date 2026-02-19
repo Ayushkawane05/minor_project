@@ -206,6 +206,11 @@ export default function EmployeeDashboard() {
                         <div className="navbar-user-info">
                             <div className="navbar-user-name">{user.name || "Employee"}</div>
                             <div className="navbar-user-role">👤 {user.role || "Employee"}</div>
+                            {user.totalPoints !== undefined && (
+                                <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 700, marginTop: 2 }}>
+                                    ✨ {Math.round(user.totalPoints)} Points
+                                </div>
+                            )}
                         </div>
                     </div>
                     <button className="btn btn-danger btn-sm" onClick={handleLogout}>🚪 Logout</button>
@@ -333,23 +338,70 @@ export default function EmployeeDashboard() {
                                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
                                                 <div className="problem-meta">
                                                     <span className="problem-meta-item">👤 {p.raisedBy?.name || "Unknown"}</span>
-                                                    {p.acceptedBy && <span className="problem-meta-item">🛠️ {p.acceptedBy?.name}</span>}
                                                     <span className="problem-meta-item">📁 {p.category || "Other"}</span>
-                                                    <span className="problem-meta-item">🗓️ {formatDate(p.createdAt)}</span>
+                                                    {p.status === "Solved" && p.acceptedBy?._id === user.id && (
+                                                        <span className="problem-meta-item" style={{ color: "#a78bfa", fontWeight: 700 }}>
+                                                            ✨ Achievement: +{Math.round(p.rating * (p.solution?.sentimentScore || 0.8) * 20)} Pts
+                                                        </span>
+                                                    )}
+                                                    {p.acceptedBy && (
+                                                        <span className="problem-meta-item" style={{
+                                                            color: p.status === "Solved" ? "#10b981" : "var(--text-secondary)",
+                                                            fontWeight: p.status === "Solved" ? 600 : 400,
+                                                            background: p.status === "Solved" ? "rgba(16,185,129,0.1)" : "transparent",
+                                                            padding: p.status === "Solved" ? "2px 8px" : "0",
+                                                            borderRadius: "4px"
+                                                        }}>
+                                                            {p.status === "Solved" ? "✅ Solved by: " : "🛠️ Assigned to: "} {p.acceptedBy?.name}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div style={{ display: "flex", gap: 8 }}>
+
+                                                {/* Solution Content Display */}
+                                                {(p.status === "Solved" || p.status === "Reviewed" || p.status === "Closed") && p.solution && (
+                                                    <div style={{
+                                                        marginTop: 14,
+                                                        padding: "12px 16px",
+                                                        background: "rgba(16,185,129,0.05)",
+                                                        borderRadius: 8,
+                                                        borderLeft: "4px solid #10b981",
+                                                        width: "100%"
+                                                    }}>
+                                                        <div style={{ fontSize: 12, fontWeight: 700, color: "#10b981", textTransform: "uppercase", marginBottom: 6 }}>
+                                                            💡 Solution Provided
+                                                        </div>
+                                                        <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: 0, whiteSpace: "pre-wrap" }}>
+                                                            {p.solution.content || p.solution}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                <div style={{ display: "flex", gap: 8, marginTop: 12, width: "100%", justifyContent: "flex-end" }}>
                                                     {/* Submit solution: only the person who accepted it, when In Progress */}
                                                     {isSolver && p.status === "In Progress" && (
                                                         <button className="btn btn-success" onClick={() => { setSolutionModal(p); setSolutionText(""); setSolutionError(""); }}>
                                                             📝 Submit Solution
                                                         </button>
                                                     )}
-                                                    {/* Give feedback: only the raiser, when Solved */}
-                                                    {isRaiser && p.status === "Solved" && (
+                                                    {/* Give feedback: only the raiser, when Solved, and if not already rated */}
+                                                    {isRaiser && p.status === "Solved" && !p.rating && (
                                                         <button className="btn btn-success" style={{ background: "rgba(99,102,241,0.1)", color: "#818cf8", borderColor: "rgba(99,102,241,0.2)" }}
                                                             onClick={() => { setFeedbackModal({ ...p, solutionId: p.solution?._id || p.solution }); setFeedbackRating(0); setFeedbackComment(""); setFeedbackError(""); }}>
                                                             ⭐ Give Feedback
                                                         </button>
+                                                    )}
+                                                    {p.status === "Solved" && p.rating && (
+                                                        <span style={{
+                                                            color: "var(--text-muted)",
+                                                            fontSize: 13,
+                                                            alignSelf: "center",
+                                                            background: "rgba(255,255,255,0.03)",
+                                                            padding: "4px 10px",
+                                                            borderRadius: "6px",
+                                                            border: "1px solid rgba(255,255,255,0.05)"
+                                                        }}>
+                                                            ⭐ Rated: {p.rating}/5
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>

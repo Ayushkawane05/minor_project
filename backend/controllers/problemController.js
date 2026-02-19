@@ -20,7 +20,19 @@ export const createProblem = async (req, res) => {
 //All problems
 export const getProblems = async (req, res) => {
   try {
-    const problems = await Problem.find()
+    let query = {};
+
+    // If employee, only show their own raised or accepted problems
+    if (req.user.role === "Employee") {
+      query = {
+        $or: [
+          { raisedBy: req.user.id },
+          { acceptedBy: req.user.id }
+        ]
+      };
+    }
+
+    const problems = await Problem.find(query)
       .populate("raisedBy", "name email")
       .populate("acceptedBy", "name email")
       .populate("solution");

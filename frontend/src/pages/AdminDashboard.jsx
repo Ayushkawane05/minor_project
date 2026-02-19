@@ -20,6 +20,9 @@ export default function AdminDashboard() {
     const [error, setError] = useState("");
     const navigate = useNavigate();
 
+    const [statsData, setStatsData] = useState(null);
+    const [statsLoading, setStatsLoading] = useState(true);
+
     const user = (() => { try { return JSON.parse(localStorage.getItem("user")) || {}; } catch { return {}; } })();
 
     const handleLogout = useCallback(() => {
@@ -41,10 +44,22 @@ export default function AdminDashboard() {
         }
     }, [handleLogout]);
 
+    const fetchStats = useCallback(async () => {
+        try {
+            const { data } = await API.get("/admin/stats");
+            setStatsData(data);
+        } catch (err) {
+            console.error("Failed to load stats", err);
+        } finally {
+            setStatsLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         if (!localStorage.getItem("token")) { navigate("/admin"); return; }
         fetchProblems();
-    }, [fetchProblems, navigate]);
+        fetchStats();
+    }, [fetchProblems, fetchStats, navigate]);
 
     const acceptProblem = async (id) => {
         setAcceptingId(id);
@@ -123,11 +138,13 @@ export default function AdminDashboard() {
                     </div>
                 </div>
 
-                {/* Problems Table */}
+                {/* Content Section */}
                 <div className="section">
                     <div className="section-header">
-                        <h2 className="section-title">📋 All Problems</h2>
-                        <button className="btn btn-secondary btn-sm" onClick={fetchProblems}>🔄 Refresh</button>
+                        <h2 className="section-title">
+                            {activeTab === "leaderboard" ? "🏆 Employee Leaderboard" : "📋 All Problems"}
+                        </h2>
+                        <button className="btn btn-secondary btn-sm" onClick={() => { fetchProblems(); fetchStats(); }}>🔄 Refresh</button>
                     </div>
                     <div className="section-body">
                         <div className="tabs">
@@ -136,6 +153,7 @@ export default function AdminDashboard() {
                                 { key: "open", label: "Open" },
                                 { key: "inprogress", label: "In Progress" },
                                 { key: "solved", label: "Resolved" },
+                                { key: "leaderboard", label: "Leaderboard 🏆" },
                             ].map((tab) => (
                                 <button key={tab.key} className={`tab ${activeTab === tab.key ? "active" : ""}`}
                                     onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
@@ -144,10 +162,54 @@ export default function AdminDashboard() {
 
                         {error && <div className="alert alert-error"><span>⚠️</span> {error}</div>}
 
-                        {loading ? (
+                        {loading || (activeTab === "leaderboard" && statsLoading) ? (
                             <div className="empty-state">
                                 <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
-                                <p className="empty-state-text" style={{ marginTop: 12 }}>Loading problems...</p>
+                                <p className="empty-state-text" style={{ marginTop: 12 }}>Loading data...</p>
+                            </div>
+                        ) : activeTab === "leaderboard" ? (
+                            <div className="leaderboard-view">
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                                    {statsData?.topSolvers?.map((e, i) => (
+                                        <div key={e._id} className="stat-card" style={{ flexDirection: "column", alignItems: "flex-start", gap: 12, padding: 24 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
+                                                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                                                    <div className="navbar-avatar" style={{ margin: 0, width: 44, height: 44, fontSize: 16 }}>{getInitials(e.name)}</div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, fontSize: 16 }}>{e.name}</div>
+                                                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>#{i + 1} Top Solver</div>
+                                                            <div style={{
+                                                                fontSize: 10,
+                                                                background: e.role === "HR" ? "rgba(236,72,153,0.1)" : "rgba(59,130,246,0.1)",
+                                                                color: e.role === "HR" ? "#ec4899" : "#3b82f6",
+                                                                padding: "1px 6px",
+                                                                borderRadius: "10px",
+                                                                fontWeight: 600,
+                                                                textTransform: "uppercase"
+                                                            }}>{e.role || "Emp"}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ fontSize: 24 }}>{["🥇", "🥈", "🥉", "🏅", "🏅"][i] || "✨"}</div>
+                                            </div>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, width: "100%", marginTop: 8 }}>
+                                                <div className="stat-item">
+                                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Total Points</div>
+                                                    <div style={{ fontSize: 18, fontWeight: 700, color: "#a78bfa" }}>{Math.round(e.totalPoints || 0)}</div>
+                                                </div>
+                                                <div className="stat-item">
+                                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Avg Rating</div>
+                                                    <div style={{ fontSize: 18, fontWeight: 700, color: "#f59e0b" }}>⭐ {e.averageRating || 0}</div>
+                                                </div>
+                                                <div className="stat-item">
+                                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Solved</div>
+                                                    <div style={{ fontSize: 18, fontWeight: 700 }}>{e.problemsSolved?.length || 0}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         ) : filteredProblems.length === 0 ? (
                             <div className="empty-state">
@@ -178,8 +240,13 @@ export default function AdminDashboard() {
                                                 <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{p.raisedBy?.name || "—"}</span>
                                             </div>
                                             <div style={{ fontSize: 13 }}>
-                                                <span style={{ color: "var(--text-muted)" }}>Accepted by: </span>
-                                                <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{p.acceptedBy?.name || "—"}</span>
+                                                <span style={{ color: "var(--text-muted)" }}>Accepted/Solved by: </span>
+                                                <span style={{
+                                                    color: p.status === "Solved" ? "#10b981" : "var(--text-primary)",
+                                                    fontWeight: 600
+                                                }}>
+                                                    {p.acceptedBy?.name || "—"}
+                                                </span>
                                             </div>
                                             <div style={{ fontSize: 13 }}>
                                                 <span style={{ color: "var(--text-muted)" }}>Category: </span>
@@ -189,6 +256,25 @@ export default function AdminDashboard() {
                                                 <span style={{ color: "var(--text-muted)" }}>Raised on: </span>
                                                 <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>{formatDate(p.createdAt)}</span>
                                             </div>
+
+                                            {/* Admin Solution View */}
+                                            {(p.status === "Solved" || p.status === "Reviewed" || p.status === "Closed") && p.solution && (
+                                                <div style={{
+                                                    gridColumn: "1/-1",
+                                                    marginTop: 8,
+                                                    padding: "12px",
+                                                    background: "rgba(99,102,241,0.05)",
+                                                    borderRadius: 8,
+                                                    border: "1px dashed rgba(99,102,241,0.2)"
+                                                }}>
+                                                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--primary-color)", textTransform: "uppercase", marginBottom: 4 }}>
+                                                        📝 Verified Solution
+                                                    </div>
+                                                    <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0, whiteSpace: "pre-wrap" }}>
+                                                        {p.solution.content || p.solution}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {p.rating && (
                                                 <div style={{ fontSize: 13 }}>
                                                     <span style={{ color: "var(--text-muted)" }}>Rating: </span>
@@ -220,7 +306,7 @@ export default function AdminDashboard() {
                         )}
                     </div>
                 </div>
-            </main>
-        </div>
+            </main >
+        </div >
     );
 }

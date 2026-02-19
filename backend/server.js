@@ -7,7 +7,7 @@ import authRoutes from './routes/authRoutes.js'
 import problemRoutes from "./routes/problemRoutes.js";
 import solutionRoutes from "./routes/solutionRoutes.js";
 import feedbackRoutes from "./routes/feedbackRoutes.js";
-
+import adminRoutes from "./routes/adminRoutes.js";
 
 dotenv.config();
 
@@ -20,6 +20,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/problems", problemRoutes);
 app.use("/api/solutions", solutionRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.send("API is running...");
