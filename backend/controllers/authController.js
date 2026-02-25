@@ -1,6 +1,7 @@
 import User from "../models/user.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import { generateId } from "../utils/idGenerator.js";
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -12,9 +13,9 @@ const generateToken = (id) => {
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
-    if(!name || !email || !password)
+    if (!name || !email || !password)
       return res.status(400).json({ message: "All fields are required" });
-    // add regex validation for email and password
+    // add validation for email and password
 
     const userExists = await User.findOne({ email });
     if (userExists)
@@ -25,10 +26,12 @@ export const registerUser = async (req, res) => {
       email,
       password,
       role,
+      userId: generateId("USR"),
     });
 
     res.status(201).json({
       _id: user._id,
+      userId: user.userId,
       name: user.name,
       email: user.email,
       role: user.role,
@@ -45,13 +48,13 @@ export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if(!email || !password)
+    if (!email || !password)
       return res.status(400).json({ message: "Email and password are required" });
 
     const user = await User.findOne({ email });
     if (!user)
       return res.status(400).json({ message: "Invalid credentials" });
-    
+
     const userPassword = user.password;
     const isMatch = await bcrypt.compare(password, userPassword);
     if (!isMatch)
@@ -59,6 +62,7 @@ export const loginUser = async (req, res) => {
 
     res.json({
       _id: user._id,
+      userId: user.userId,
       name: user.name,
       email: user.email,
       role: user.role,

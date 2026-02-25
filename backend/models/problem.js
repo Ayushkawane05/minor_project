@@ -19,6 +19,12 @@ const problemSchema = new mongoose.Schema(
       default: "Other",
     },
 
+    problemId: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+
     priority: {
       type: String,
       enum: ["Low", "Medium", "High", "hard"],
@@ -27,15 +33,13 @@ const problemSchema = new mongoose.Schema(
 
     // Who raised the problem
     raisedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, // Stores userId
       required: true,
     },
 
     // who accepted / solving it
     assignedTo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, // Stores userId
       default: null,
     },
 
@@ -79,8 +83,7 @@ const problemSchema = new mongoose.Schema(
     },
 
     acceptedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, // Stores userId
       default: null,
     },
   },
@@ -104,8 +107,22 @@ problemSchema.set("toObject", { virtuals: true });
 // Virtual for solution
 problemSchema.virtual("solution", {
   ref: "Solution",
-  localField: "_id",
+  localField: "problemId",
   foreignField: "problem",
+  justOne: true,
+});
+
+problemSchema.virtual("creator", {
+  ref: "User",
+  localField: "raisedBy",
+  foreignField: "userId",
+  justOne: true,
+});
+
+problemSchema.virtual("solver", {
+  ref: "User",
+  localField: "acceptedBy",
+  foreignField: "userId",
   justOne: true,
 });
 

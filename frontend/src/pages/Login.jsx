@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import API from "../api/api";
+import { LogIn, AlertCircle, Lock, Target, Mail } from "lucide-react";
 
 export default function Login() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -19,7 +20,11 @@ export default function Login() {
       const { data } = await API.post("/auth/login", form);
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify({
-        _id: data._id, name: data.name, email: data.email, role: data.role,
+        _id: data._id,
+        userId: data.userId,
+        name: data.name,
+        email: data.email,
+        role: data.role,
       }));
       if (data.role === "Admin") {
         navigate("/admin/dashboard");
@@ -37,7 +42,9 @@ export default function Login() {
     <div className="auth-layout">
       <div className="auth-card">
         <div className="auth-logo">
-          <div className="auth-logo-icon">🎯</div>
+          <div className="auth-logo-icon">
+            <Target size={32} color="white" />
+          </div>
           <span className="auth-logo-text">ProblemTrack</span>
         </div>
 
@@ -45,25 +52,54 @@ export default function Login() {
         <p className="auth-subtitle">Sign in to raise and track problems</p>
 
         {error && (
-          <div className="alert alert-error"><span>⚠️</span> {error}</div>
+          <div className="alert alert-error">
+            <AlertCircle size={16} style={{ marginRight: 8, flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
         )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Email Address</label>
-            <input className="form-input" type="email" name="email"
-              placeholder="you@company.com" value={form.email}
-              onChange={handleChange} required autoComplete="email" />
+            <div className="input-with-icon">
+              <span className="input-icon">
+                <Mail size={18} />
+              </span>
+              <input
+                className="form-input with-icon"
+                type="email"
+                name="email"
+                placeholder="you@company.com"
+                value={form.email}
+                onChange={handleChange}
+                required
+                autoComplete="email"
+                style={{ paddingLeft: 38 }}
+              />
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input className="form-input" type="password" name="password"
-              placeholder="Enter your password" value={form.password}
-              onChange={handleChange} required autoComplete="current-password" />
+            <div className="input-with-icon">
+              <span className="input-icon">
+                <Lock size={18} />
+              </span>
+              <input
+                className="form-input with-icon"
+                type="password"
+                name="password"
+                placeholder="Enter your password"
+                value={form.password}
+                onChange={handleChange}
+                required
+                autoComplete="current-password"
+                style={{ paddingLeft: 38 }}
+              />
+            </div>
           </div>
           <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? <span className="spinner" /> : "🔐"}&nbsp;
-            {loading ? "Signing in..." : "Sign In as Employee"}
+            {loading ? <span className="spinner" /> : <LogIn size={18} />}
+            <span style={{ marginLeft: 8 }}>{loading ? "Signing in..." : "Sign In as Employee"}</span>
           </button>
         </form>
 

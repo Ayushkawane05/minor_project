@@ -1,6 +1,23 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/api";
+import socket from "../socket";
+import {
+    Target, LogOut, FileText, CircleDot, Clock, CheckCircle, Lock,
+    FileCheck, RotateCcw, Award, Star, User, Search, Send, MessageSquare, Trophy
+} from "lucide-react";
+
+// Status Icons Mapping
+const StatusIcon = ({ status, size = 16 }) => {
+    switch (status) {
+        case "Open": return <CircleDot size={size} />;
+        case "In Progress": return <Clock size={size} />;
+        case "Solved": return <CheckCircle size={size} />;
+        case "Reviewed": return <FileCheck size={size} />;
+        case "Closed": return <Lock size={size} />;
+        default: return <CircleDot size={size} />;
+    }
+};
 
 const STATUS_BADGE = {
     Open: "badge badge-open",
@@ -9,7 +26,7 @@ const STATUS_BADGE = {
     Reviewed: "badge badge-reviewed",
     Closed: "badge badge-closed",
 };
-const STATUS_ICON = { Open: "🔵", "In Progress": "🟡", Solved: "🟢", Reviewed: "🟣", Closed: "⚫" };
+
 const PRIORITY_BADGE = { Low: "badge badge-low", Medium: "badge badge-medium", High: "badge badge-high", hard: "badge badge-high" };
 
 function StarRating({ value, onChange }) {
@@ -23,14 +40,18 @@ function StarRating({ value, onChange }) {
                     onMouseEnter={() => setHovered(star)}
                     onMouseLeave={() => setHovered(0)}
                     style={{
-                        fontSize: 28,
                         cursor: "pointer",
-                        color: star <= (hovered || value) ? "#f59e0b" : "#334466",
-                        transition: "color 0.15s, transform 0.15s",
+                        transition: "transform 0.15s",
                         transform: star <= (hovered || value) ? "scale(1.2)" : "scale(1)",
                         display: "inline-block",
                     }}
-                >★</span>
+                >
+                    <Star
+                        size={28}
+                        fill={star <= (hovered || value) ? "#f59e0b" : "none"}
+                        color={star <= (hovered || value) ? "#f59e0b" : "#334466"}
+                    />
+                </span>
             ))}
             {value > 0 && (
                 <span style={{ fontSize: 13, color: "var(--text-muted)", alignSelf: "center", marginLeft: 4 }}>
@@ -41,7 +62,7 @@ function StarRating({ value, onChange }) {
     );
 }
 
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, maxWidth = 480 }) {
     return (
         <div style={{
             position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
@@ -51,7 +72,7 @@ function Modal({ title, onClose, children }) {
             <div style={{
                 background: "var(--bg-card)", border: "1px solid var(--border)",
                 borderRadius: "var(--radius-xl)", padding: 32, width: "100%",
-                maxWidth: 480, boxShadow: "var(--shadow-lg)", animation: "slideUp 0.25s ease"
+                maxWidth: maxWidth, boxShadow: "var(--shadow-lg)", animation: "slideUp 0.25s ease"
             }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                     <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h3>
@@ -71,6 +92,16 @@ export default function EmployeeDashboard() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState("all");
 
+    // Leaderboard State
+    const [leaderboardData, setLeaderboardData] = useState([]);
+    const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+    const [leaderboardView, setLeaderboardView] = useState("grid");
+    const [leaderboardSort, setLeaderboardSort] = useState("points");
+
+    // User History state
+    const [selectedUserHistory, setSelectedUserHistory] = useState(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
     // Raise problem form
     const [newProblem, setNewProblem] = useState({ title: "", description: "", category: "Other", priority: "Medium" });
     const [formError, setFormError] = useState("");
@@ -82,6 +113,9 @@ export default function EmployeeDashboard() {
     const [solutionText, setSolutionText] = useState("");
     const [solutionError, setSolutionError] = useState("");
     const [solutionLoading, setSolutionLoading] = useState(false);
+
+    // Accept problem state
+    const [acceptingId, setAcceptingId] = useState(null);
 
     // Feedback modal
     const [feedbackModal, setFeedbackModal] = useState(null); // problem object (with solution)
@@ -111,72 +145,118 @@ export default function EmployeeDashboard() {
         }
     }, [handleLogout]);
 
+    const fetchLeaderboard = useCallback(async () => {
+        setLeaderboardLoading(true);
+        try {
+            const { data } = await API.get("/admin/leaderboard");
+            setLeaderboardData(data);
+        } catch (err) {
+            console.error("Failed to load leaderboard", err);
+        } finally {
+            setLeaderboardLoading(false);
+        }
+    }, []);
+
+    const fetchUserHistory = async (userId) => {
+        setHistoryLoading(true);
+        try {
+            const { data } = await API.get(`/admin/leaderboard/${userId}/history`);
+            setSelectedUserHistory(data);
+        } catch (err) {
+            alert("Failed to load user history");
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (!localStorage.getItem("token")) { navigate("/"); return; }
         fetchProblems();
-    }, [fetchProblems, navigate]);
+        if (activeTab === "leaderboard") fetchLeaderboard();
 
+        // Socket listeners
+        socket.on("newProblem", (problem) => {
+            setProblems((prev) => prev.find((p) => p.problemId === problem.problemId) ? prev : [problem, ...prev]);
+        });
+        socket.on("problemUpdated", (upd) => setProblems((prev) => prev.map((p) => p.problemId === upd.problemId ? upd : p)));
+        socket.on("solutionSubmitted", (sol) => {
+            setProblems((prev) => prev.map((p) => {
+                if (p.problemId === (sol.problemDetails?.problemId || sol.problem)) return { ...p, status: "Solved", solution: sol };
+                return p;
+            }));
+        });
 
+        return () => {
+            socket.off("newProblem");
+            socket.off("problemUpdated");
+            socket.off("solutionSubmitted");
+        };
+    }, [fetchProblems, fetchLeaderboard, activeTab, navigate]);
 
     const createProblem = async (e) => {
         e.preventDefault();
         setFormError(""); setFormSuccess("");
-        if (!newProblem.title.trim() || !newProblem.description.trim()) {
-            setFormError("Title and description are required."); return;
-        }
+        if (!newProblem.title.trim() || !newProblem.description.trim()) { setFormError("All fields required"); return; }
         setSubmitting(true);
         try {
             await API.post("/problems", newProblem);
-            setFormSuccess("Problem raised successfully! ✅");
+            setFormSuccess("Problem raised!");
             setNewProblem({ title: "", description: "", category: "Other", priority: "Medium" });
             fetchProblems();
             setTimeout(() => setFormSuccess(""), 3000);
+        } catch (err) { setFormError("Failed to raise"); }
+        finally { setSubmitting(false); }
+    };
+
+    const acceptProblem = async (id) => {
+        setAcceptingId(id);
+        try { await API.put(`/problems/${id}/accept`); }
+        catch (err) { alert(err.response?.data?.message || "Could not accept"); }
+        finally { setAcceptingId(null); }
+    };
+
+    const deleteProblem = async (id) => {
+        if (!window.confirm("Are you sure you want to delete this problem?")) return;
+        try {
+            await API.delete(`/problems/${id}`);
+            fetchProblems();
         } catch (err) {
-            setFormError(err.response?.data?.message || "Failed to raise problem.");
-        } finally {
-            setSubmitting(false);
+            alert(err.response?.data?.message || "Failed to delete");
         }
     };
 
     const submitSolution = async () => {
-        setSolutionError("");
-        if (!solutionText.trim()) { setSolutionError("Please write your solution."); return; }
+        if (!solutionText.trim()) { setSolutionError("Required"); return; }
         setSolutionLoading(true);
         try {
             await API.post(`/solutions/${solutionModal._id}`, { solutionText });
-            setSolutionModal(null);
-            setSolutionText("");
-            fetchProblems();
-        } catch (err) {
-            setSolutionError(err.response?.data?.message || "Failed to submit solution.");
-        } finally {
-            setSolutionLoading(false);
-        }
+            setSolutionModal(null); setSolutionText(""); fetchProblems();
+        } catch (err) { setSolutionError("Failed"); }
+        finally { setSolutionLoading(false); }
     };
 
     const submitFeedback = async () => {
-        setFeedbackError(""); setFeedbackSuccess("");
-        if (feedbackRating === 0) { setFeedbackError("Please select a star rating."); return; }
-        if (!feedbackComment.trim()) { setFeedbackError("Please write a feedback comment."); return; }
+        if (feedbackRating === 0 || !feedbackComment.trim()) { setFeedbackError("Required"); return; }
         setFeedbackLoading(true);
         try {
-            // Get solution id for this problem
-            const solutionId = feedbackModal.solution?._id || feedbackModal.solution;
-            await API.post(`/feedback/${solutionId}`, { rating: feedbackRating, comment: feedbackComment });
-            setFeedbackSuccess("Feedback submitted! Thank you. ✅");
-            setTimeout(() => { setFeedbackModal(null); setFeedbackRating(0); setFeedbackComment(""); setFeedbackSuccess(""); fetchProblems(); }, 1500);
-        } catch (err) {
-            setFeedbackError(err.response?.data?.message || "Failed to submit feedback.");
-        } finally {
-            setFeedbackLoading(false);
-        }
+            const sid = feedbackModal.solution?._id || feedbackModal.solution;
+            await API.post(`/feedback/${sid}`, { rating: feedbackRating, comment: feedbackComment, role: user.role });
+            setFeedbackSuccess("Submitted!");
+            setTimeout(() => { setFeedbackModal(null); fetchProblems(); }, 1500);
+        } catch (err) { setFeedbackError("Failed"); }
+        finally { setFeedbackLoading(false); }
     };
 
-    const getInitials = (name = "") => name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
-    const formatDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+    const sortedUsers = (() => [...leaderboardData].sort((a, b) => {
+        if (leaderboardSort === "points") return (b.totalPoints || 0) - (a.totalPoints || 0);
+        if (leaderboardSort === "rating") return (b.averageRating || 0) - (a.averageRating || 0);
+        if (leaderboardSort === "solved") return (b.problemsSolved?.length || 0) - (a.problemsSolved?.length || 0);
+        return 0;
+    }))();
 
-    const myProblems = problems.filter((p) => p.raisedBy?._id === user._id);
-    const myAccepted = problems.filter((p) => p.acceptedBy?._id === user._id && p.status === "In Progress");
+    const getInitials = (n = "") => n.split(" ").map((x) => x[0]).join("").toUpperCase().slice(0, 2);
+    const myProblems = problems.filter((p) => p.raisedBy === user.userId);
+    const myAccepted = problems.filter((p) => p.acceptedBy === user.userId && p.status === "In Progress");
 
     const filteredProblems = (() => {
         if (activeTab === "mine") return myProblems;
@@ -185,225 +265,154 @@ export default function EmployeeDashboard() {
         return problems;
     })();
 
-    const stats = {
-        raised: myProblems.length,
-        open: problems.filter((p) => p.status === "Open").length,
-        solving: myAccepted.length,
-        solved: problems.filter((p) => p.status === "Solved").length,
-    };
+    const stats = { raised: myProblems.length, open: problems.filter((p) => p.status === "Open").length, solving: myAccepted.length, solved: problems.filter((p) => p.status === "Solved").length };
 
     return (
         <div className="dashboard-layout">
-            {/* Navbar */}
             <nav className="navbar">
                 <div className="navbar-brand">
-                    <div className="navbar-logo">🎯</div>
+                    <div className="navbar-logo"><Target size={20} color="white" /></div>
                     <span className="navbar-title">ProblemTrack</span>
                 </div>
                 <div className="navbar-right">
                     <div className="navbar-user">
                         <div className="navbar-avatar">{getInitials(user.name)}</div>
                         <div className="navbar-user-info">
-                            <div className="navbar-user-name">{user.name || "Employee"}</div>
-                            <div className="navbar-user-role">👤 {user.role || "Employee"}</div>
-                            {user.totalPoints !== undefined && (
-                                <div style={{ fontSize: 11, color: "#a78bfa", fontWeight: 700, marginTop: 2 }}>
-                                    ✨ {Math.round(user.totalPoints)} Points
-                                </div>
-                            )}
+                            <div className="navbar-user-name">{user.name}</div>
+                            <div className="navbar-user-role">{user.role}</div>
+                            {user.totalPoints !== undefined && <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Award size={12} /> {Math.round(user.totalPoints)} Pts</div>}
                         </div>
                     </div>
-                    <button className="btn btn-danger btn-sm" onClick={handleLogout}>🚪 Logout</button>
+                    <button className="btn btn-danger btn-sm" onClick={handleLogout}><LogOut size={16} /> Logout</button>
                 </div>
             </nav>
 
             <main className="dashboard-main">
-                {/* Stats */}
                 <div className="stats-row">
                     <div className="stat-card">
-                        <div className="stat-icon purple">📋</div>
-                        <div><div className="stat-value">{stats.raised}</div><div className="stat-label">My Problems</div></div>
+                        <div className="stat-icon purple"><FileText size={24} color="#6366f1" /></div>
+                        <div><div className="stat-value">{stats.raised}</div><div className="stat-label">Raised</div></div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon blue">🔵</div>
+                        <div className="stat-icon blue"><CircleDot size={24} color="#3b82f6" /></div>
                         <div><div className="stat-value">{stats.open}</div><div className="stat-label">Open</div></div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon yellow">⚡</div>
-                        <div><div className="stat-value">{stats.solving}</div><div className="stat-label">I'm Solving</div></div>
+                        <div className="stat-icon yellow"><Clock size={24} color="#f59e0b" /></div>
+                        <div><div className="stat-value">{stats.solving}</div><div className="stat-label">Solving</div></div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon green">✅</div>
+                        <div className="stat-icon green"><CheckCircle size={24} color="#10b981" /></div>
                         <div><div className="stat-value">{stats.solved}</div><div className="stat-label">Solved</div></div>
                     </div>
                 </div>
 
-                {/* Raise Problem */}
-                <div className="section">
-                    <div className="section-header">
-                        <h2 className="section-title">🚨 Raise a Problem</h2>
-                    </div>
+                <div className="section" style={{ display: activeTab === "leaderboard" ? "none" : "block" }}>
+                    <div className="section-header"><h2 className="section-title"><Target size={20} /> Raise Problem</h2></div>
                     <div className="section-body">
-                        {formError && <div className="alert alert-error"><span>⚠️</span> {formError}</div>}
-                        {formSuccess && <div className="alert alert-success"><span>✅</span> {formSuccess}</div>}
+                        {formError && <div className="alert alert-error">{formError}</div>}
+                        {formSuccess && <div className="alert alert-success">{formSuccess}</div>}
                         <form className="problem-form" onSubmit={createProblem}>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Problem Title</label>
-                                <input className="form-input" name="title" placeholder="Brief summary of the issue..."
-                                    value={newProblem.title} onChange={(e) => setNewProblem({ ...newProblem, title: e.target.value })} />
-                            </div>
+                            <input className="form-input" placeholder="Title..." value={newProblem.title} onChange={(e) => setNewProblem({ ...newProblem, title: e.target.value })} />
                             <div className="problem-form-row">
-                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                    <label className="form-label">Category</label>
-                                    <select className="form-select" name="category" value={newProblem.category}
-                                        onChange={(e) => setNewProblem({ ...newProblem, category: e.target.value })}>
-                                        <option value="Technical">Technical</option>
-                                        <option value="HR">HR</option>
-                                        <option value="Finance">Finance</option>
-                                        <option value="Operations">Operations</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                    <label className="form-label">Priority</label>
-                                    <select className="form-select" name="priority" value={newProblem.priority}
-                                        onChange={(e) => setNewProblem({ ...newProblem, priority: e.target.value })}>
-                                        <option value="Low">🟢 Low</option>
-                                        <option value="Medium">🟡 Medium</option>
-                                        <option value="High">🔴 High</option>
-                                        <option value="hard">🔥 Critical</option>
-                                    </select>
-                                </div>
+                                <select className="form-select" value={newProblem.category} onChange={(e) => setNewProblem({ ...newProblem, category: e.target.value })}>
+                                    <option value="Technical">Technical</option><option value="HR">HR</option><option value="Finance">Finance</option><option value="Operations">Operations</option><option value="Other">Other</option>
+                                </select>
+                                <select className="form-select" value={newProblem.priority} onChange={(e) => setNewProblem({ ...newProblem, priority: e.target.value })}>
+                                    <option value="Low">Low</option><option value="Medium">Medium</option><option value="High">High</option><option value="hard">Critical</option>
+                                </select>
                             </div>
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                                <label className="form-label">Description</label>
-                                <textarea className="form-textarea" name="description" placeholder="Describe the problem in detail..."
-                                    value={newProblem.description} onChange={(e) => setNewProblem({ ...newProblem, description: e.target.value })} />
-                            </div>
-                            <div>
-                                <button className="btn btn-primary" type="submit" disabled={submitting}
-                                    style={{ width: "auto", padding: "12px 32px" }}>
-                                    {submitting ? <span className="spinner" /> : "🚀"}&nbsp;
-                                    {submitting ? "Submitting..." : "Submit Problem"}
-                                </button>
-                            </div>
+                            <textarea className="form-textarea" placeholder="Description..." value={newProblem.description} onChange={(e) => setNewProblem({ ...newProblem, description: e.target.value })} />
+                            <button className="btn btn-primary" type="submit" disabled={submitting}>{submitting ? "..." : "Submit"}</button>
                         </form>
                     </div>
                 </div>
 
-                {/* Problems List */}
                 <div className="section">
                     <div className="section-header">
-                        <h2 className="section-title">📋 Problems</h2>
-                        <button className="btn btn-secondary btn-sm" onClick={fetchProblems}>🔄 Refresh</button>
+                        <h2 className="section-title">{activeTab === "leaderboard" ? <><Trophy size={20} /> Leaderboard</> : <><FileText size={20} /> Problems</>}</h2>
+                        <button className="btn btn-secondary btn-sm" onClick={() => { fetchProblems(); if (activeTab === "leaderboard") fetchLeaderboard(); }}><RotateCcw size={16} /> Refresh</button>
                     </div>
                     <div className="section-body">
                         <div className="tabs">
                             {[
-                                { key: "all", label: "All Problems" },
+                                { key: "all", label: "All" },
                                 { key: "open", label: "Open" },
                                 { key: "mine", label: "My Raised" },
-                                { key: "accepted", label: "I'm Solving" },
-                            ].map((tab) => (
-                                <button key={tab.key} className={`tab ${activeTab === tab.key ? "active" : ""}`}
-                                    onClick={() => setActiveTab(tab.key)}>{tab.label}</button>
+                                { key: "accepted", label: "Solving" },
+                                { key: "leaderboard", label: "Leaderboard" }
+                            ].map((t) => (
+                                <button key={t.key} className={`tab ${activeTab === t.key ? "active" : ""}`} onClick={() => setActiveTab(t.key)}>{t.label}</button>
                             ))}
                         </div>
 
-                        {loading ? (
-                            <div className="empty-state">
-                                <span className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
-                                <p className="empty-state-text" style={{ marginTop: 12 }}>Loading...</p>
+                        {activeTab === "leaderboard" ? (
+                            <div className="leaderboard-view">
+                                <div className="leaderboard-controls" style={{ display: "flex", justifyContent: "space-between", marginBottom: 20, padding: 12, background: "rgba(0,0,0,0.02)", borderRadius: 12 }}>
+                                    <div style={{ display: "flex", gap: 8 }}>
+                                        <button className={`btn btn-${leaderboardView === "grid" ? "primary" : "secondary"} btn-sm`} onClick={() => setLeaderboardView("grid")}>Grid</button>
+                                        <button className={`btn btn-${leaderboardView === "table" ? "primary" : "secondary"} btn-sm`} onClick={() => setLeaderboardView("table")}>Table</button>
+                                    </div>
+                                    <select className="form-select" style={{ width: "auto" }} value={leaderboardSort} onChange={(e) => setLeaderboardSort(e.target.value)}>
+                                        <option value="points">Points</option><option value="rating">Rating</option><option value="solved">Solved</option>
+                                    </select>
+                                </div>
+                                {leaderboardLoading ? <div>Loading...</div> : leaderboardView === "grid" ? (
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                                        {sortedUsers.map((e, i) => (
+                                            <div key={e.userId} className="stat-card" style={{ flexDirection: "column", gap: 12, padding: 24, position: "relative" }}>
+                                                {i < 3 && <div style={{ position: "absolute", top: -10, right: -10, background: "var(--bg-card)", fontSize: 24, padding: 4, borderRadius: "50%", border: "1px solid var(--border)" }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"}</div>}
+                                                <div style={{ display: "flex", gap: 12, alignItems: "center", cursor: "pointer" }} onClick={() => fetchUserHistory(e.userId)}>
+                                                    <div className="navbar-avatar" style={{ margin: 0 }}>{getInitials(e.name)}</div>
+                                                    <div><div style={{ fontWeight: 700 }}>{e.name} {e.userId === user.userId && "(You)"}</div><div style={{ fontSize: 10, color: "var(--text-muted)" }}>{e.role} • {e.userId}</div></div>
+                                                </div>
+                                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, width: "100%" }}>
+                                                    <div style={{ textAlign: "center" }}><div style={{ fontSize: 10 }}>Pts</div><div style={{ fontWeight: 800 }}>{Math.round(e.totalPoints)}</div></div>
+                                                    <div style={{ textAlign: "center" }}><div style={{ fontSize: 10 }}>Star</div><div style={{ fontWeight: 800 }}>{e.averageRating?.toFixed(1) || "—"}</div></div>
+                                                    <div style={{ textAlign: "center" }}><div style={{ fontSize: 10 }}>Slvd</div><div style={{ fontWeight: 800 }}>{e.problemsSolved?.length || 0}</div></div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                        <thead><tr style={{ textAlign: "left", fontSize: 12, color: "var(--text-muted)" }}><th style={{ padding: 12 }}>Rank</th><th style={{ padding: 12 }}>User</th><th style={{ padding: 12 }}>ID</th><th style={{ padding: 12 }}>Pts</th><th style={{ padding: 12 }}>Slvd</th></tr></thead>
+                                        <tbody>{sortedUsers.map((e, i) => (
+                                            <tr key={e.userId} style={{ borderTop: "1px solid var(--border)", cursor: "pointer" }} onClick={() => fetchUserHistory(e.userId)}>
+                                                <td style={{ padding: 12 }}>{i + 1}</td>
+                                                <td style={{ padding: 12 }}>{e.name}</td>
+                                                <td style={{ padding: 12, fontSize: 11, color: "var(--text-muted)" }}>{e.userId}</td>
+                                                <td style={{ padding: 12 }}>{Math.round(e.totalPoints)}</td>
+                                                <td style={{ padding: 12 }}>{e.problemsSolved?.length || 0}</td>
+                                            </tr>
+                                        ))}</tbody>
+                                    </table>
+                                )}
                             </div>
-                        ) : filteredProblems.length === 0 ? (
-                            <div className="empty-state">
-                                <div className="empty-state-icon">📭</div>
-                                <p className="empty-state-text">No problems here.</p>
+                        ) : loading ? <div>Loading...</div> : filteredProblems.length === 0 ? (
+                            <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+                                <FileText size={48} style={{ opacity: 0.2, marginBottom: 16 }} />
+                                <div>No problems found in this category</div>
                             </div>
                         ) : (
                             <div className="problem-list">
                                 {filteredProblems.map((p) => {
-                                    const isSolver = p.acceptedBy?._id === user._id;
-                                    const isRaiser = p.raisedBy?._id === user._id;
+                                    const isS = p.acceptedBy === user.userId, isR = p.raisedBy === user.userId;
                                     return (
-                                        <div className="problem-card" key={p._id}>
+                                        <div className="problem-card" key={p.problemId}>
                                             <div className="problem-card-header">
-                                                <h3 className="problem-title">{p.title}</h3>
-                                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                                                    <span className={PRIORITY_BADGE[p.priority] || "badge badge-medium"}>{p.priority || "Medium"}</span>
-                                                    <span className={STATUS_BADGE[p.status] || "badge badge-open"}>{STATUS_ICON[p.status]} {p.status}</span>
+                                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                                    <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 700 }}>{p.problemId}</span>
+                                                    <h3 className="problem-title">{p.title}</h3>
                                                 </div>
+                                                <span className={STATUS_BADGE[p.status]}>{p.status}</span>
                                             </div>
                                             <p className="problem-desc">{p.description}</p>
-                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                                                <div className="problem-meta">
-                                                    <span className="problem-meta-item">👤 {p.raisedBy?.name || "Unknown"}</span>
-                                                    <span className="problem-meta-item">📁 {p.category || "Other"}</span>
-                                                    {p.status === "Solved" && p.acceptedBy?._id === user.id && (
-                                                        <span className="problem-meta-item" style={{ color: "#a78bfa", fontWeight: 700 }}>
-                                                            ✨ Achievement: +{Math.round(p.rating * (p.solution?.sentimentScore || 0.8) * 20)} Pts
-                                                        </span>
-                                                    )}
-                                                    {p.acceptedBy && (
-                                                        <span className="problem-meta-item" style={{
-                                                            color: p.status === "Solved" ? "#10b981" : "var(--text-secondary)",
-                                                            fontWeight: p.status === "Solved" ? 600 : 400,
-                                                            background: p.status === "Solved" ? "rgba(16,185,129,0.1)" : "transparent",
-                                                            padding: p.status === "Solved" ? "2px 8px" : "0",
-                                                            borderRadius: "4px"
-                                                        }}>
-                                                            {p.status === "Solved" ? "✅ Solved by: " : "🛠️ Assigned to: "} {p.acceptedBy?.name}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {/* Solution Content Display */}
-                                                {(p.status === "Solved" || p.status === "Reviewed" || p.status === "Closed") && p.solution && (
-                                                    <div style={{
-                                                        marginTop: 14,
-                                                        padding: "12px 16px",
-                                                        background: "rgba(16,185,129,0.05)",
-                                                        borderRadius: 8,
-                                                        borderLeft: "4px solid #10b981",
-                                                        width: "100%"
-                                                    }}>
-                                                        <div style={{ fontSize: 12, fontWeight: 700, color: "#10b981", textTransform: "uppercase", marginBottom: 6 }}>
-                                                            💡 Solution Provided
-                                                        </div>
-                                                        <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: 0, whiteSpace: "pre-wrap" }}>
-                                                            {p.solution.content || p.solution}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                <div style={{ display: "flex", gap: 8, marginTop: 12, width: "100%", justifyContent: "flex-end" }}>
-                                                    {/* Submit solution: only the person who accepted it, when In Progress */}
-                                                    {isSolver && p.status === "In Progress" && (
-                                                        <button className="btn btn-success" onClick={() => { setSolutionModal(p); setSolutionText(""); setSolutionError(""); }}>
-                                                            📝 Submit Solution
-                                                        </button>
-                                                    )}
-                                                    {/* Give feedback: only the raiser, when Solved, and if not already rated */}
-                                                    {isRaiser && p.status === "Solved" && !p.rating && (
-                                                        <button className="btn btn-success" style={{ background: "rgba(99,102,241,0.1)", color: "#818cf8", borderColor: "rgba(99,102,241,0.2)" }}
-                                                            onClick={() => { setFeedbackModal({ ...p, solutionId: p.solution?._id || p.solution }); setFeedbackRating(0); setFeedbackComment(""); setFeedbackError(""); }}>
-                                                            ⭐ Give Feedback
-                                                        </button>
-                                                    )}
-                                                    {p.status === "Solved" && p.rating && (
-                                                        <span style={{
-                                                            color: "var(--text-muted)",
-                                                            fontSize: 13,
-                                                            alignSelf: "center",
-                                                            background: "rgba(255,255,255,0.03)",
-                                                            padding: "4px 10px",
-                                                            borderRadius: "6px",
-                                                            border: "1px solid rgba(255,255,255,0.05)"
-                                                        }}>
-                                                            ⭐ Rated: {p.rating}/5
-                                                        </span>
-                                                    )}
-                                                </div>
+                                            <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                                                {isR && p.status === "Open" && <button className="btn btn-danger btn-sm" onClick={() => deleteProblem(p._id)}>Delete</button>}
+                                                {p.status === "Open" && !isR && <button className="btn btn-success btn-sm" onClick={() => acceptProblem(p._id)}>Accept</button>}
+                                                {isS && p.status === "In Progress" && <button className="btn btn-primary btn-sm" onClick={() => setSolutionModal(p)}>Submit Solution</button>}
+                                                {isR && p.status === "Solved" && !p.rating && <button className="btn btn-success btn-sm" onClick={() => setFeedbackModal(p)}>Rate Solution</button>}
                                             </div>
                                         </div>
                                     );
@@ -414,56 +423,27 @@ export default function EmployeeDashboard() {
                 </div>
             </main>
 
-            {/* Solution Modal */}
-            {solutionModal && (
-                <Modal title="📝 Submit Your Solution" onClose={() => setSolutionModal(null)}>
-                    <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
-                        Problem: <strong style={{ color: "var(--text-primary)" }}>{solutionModal.title}</strong>
-                    </p>
-                    {solutionError && <div className="alert alert-error"><span>⚠️</span> {solutionError}</div>}
-                    <div className="form-group">
-                        <label className="form-label">Your Solution</label>
-                        <textarea className="form-textarea" style={{ minHeight: 140 }}
-                            placeholder="Describe how you resolved this problem..."
-                            value={solutionText} onChange={(e) => setSolutionText(e.target.value)} />
+            {solutionModal && <Modal title="Solve" onClose={() => setSolutionModal(null)}><textarea className="form-textarea" value={solutionText} onChange={(e) => setSolutionText(e.target.value)} /><button className="btn btn-primary" onClick={submitSolution} style={{ marginTop: 12 }}>Submit</button></Modal>}
+            {feedbackModal && <Modal title="Rate" onClose={() => setFeedbackModal(null)}><StarRating value={feedbackRating} onChange={setFeedbackRating} /><textarea className="form-textarea" value={feedbackComment} onChange={(e) => setFeedbackComment(e.target.value)} /><button className="btn btn-primary" onClick={submitFeedback} style={{ marginTop: 12 }}>Rate</button></Modal>}
+            {selectedUserHistory && (
+                <Modal title={`${selectedUserHistory.name}'s History`} onClose={() => setSelectedUserHistory(null)} maxWidth={540}>
+                    <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+                        <div style={{ marginBottom: 16, fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+                            <span>User ID: <strong>{selectedUserHistory.userId}</strong></span>
+                            <span>Total Points: <strong>{Math.round(selectedUserHistory.totalPoints)}</strong></span>
+                        </div>
+                        {selectedUserHistory.solvedProblems?.length === 0 ? <div>No solutions yet</div> : selectedUserHistory.solvedProblems.map((p) => (
+                            <div key={p.problemId} style={{ padding: 12, background: "rgba(0,0,0,0.02)", marginBottom: 8, borderRadius: 8, border: "1px solid var(--border)" }}>
+                                <div style={{ fontSize: 10, color: "var(--accent)", fontWeight: 700 }}>{p.problemId}</div>
+                                <div style={{ fontWeight: 600 }}>{p.title}</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{new Date(p.solvedAt || p.updatedAt).toLocaleDateString()} • {p.status} {p.rating && `• Star: ${p.rating}`}</div>
+                            </div>
+                        ))}
                     </div>
-                    <div style={{ display: "flex", gap: 12 }}>
-                        <button className="btn btn-primary" onClick={submitSolution} disabled={solutionLoading}>
-                            {solutionLoading ? <span className="spinner" /> : "✅"}&nbsp;
-                            {solutionLoading ? "Submitting..." : "Submit Solution"}
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setSolutionModal(null)}>Cancel</button>
-                    </div>
+                    <button className="btn btn-secondary" style={{ width: "100%", marginTop: 16 }} onClick={() => setSelectedUserHistory(null)}>Close</button>
                 </Modal>
             )}
-
-            {/* Feedback Modal */}
-            {feedbackModal && (
-                <Modal title="⭐ Rate & Give Feedback" onClose={() => setFeedbackModal(null)}>
-                    <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 16 }}>
-                        Problem: <strong style={{ color: "var(--text-primary)" }}>{feedbackModal.title}</strong>
-                    </p>
-                    {feedbackError && <div className="alert alert-error"><span>⚠️</span> {feedbackError}</div>}
-                    {feedbackSuccess && <div className="alert alert-success"><span>✅</span> {feedbackSuccess}</div>}
-                    <div className="form-group">
-                        <label className="form-label">Rating</label>
-                        <StarRating value={feedbackRating} onChange={setFeedbackRating} />
-                    </div>
-                    <div className="form-group">
-                        <label className="form-label">Feedback Comment</label>
-                        <textarea className="form-textarea" style={{ minHeight: 100 }}
-                            placeholder="How well was the problem resolved? Share your thoughts..."
-                            value={feedbackComment} onChange={(e) => setFeedbackComment(e.target.value)} />
-                    </div>
-                    <div style={{ display: "flex", gap: 12 }}>
-                        <button className="btn btn-primary" onClick={submitFeedback} disabled={feedbackLoading}>
-                            {feedbackLoading ? <span className="spinner" /> : "⭐"}&nbsp;
-                            {feedbackLoading ? "Submitting..." : "Submit Feedback"}
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setFeedbackModal(null)}>Cancel</button>
-                    </div>
-                </Modal>
-            )}
+            {historyLoading && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100 }}><span className="spinner" /></div>}
         </div>
     );
 }

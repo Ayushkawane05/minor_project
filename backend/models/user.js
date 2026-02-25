@@ -23,6 +23,12 @@ const userSchema = new mongoose.Schema(
       minlength: 6
     },
 
+    userId: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+
     role: {
       type: String,
       enum: ["Employee", "HR", "Admin"],
@@ -37,19 +43,17 @@ const userSchema = new mongoose.Schema(
       type: String,
     },
 
-    problemsRaised: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Problem",
-      },
-    ],
+    // problemsRaised: [
+    //   {
+    //     type: String, // Stores problemId
+    //   },
+    // ],
 
-    problemsSolved: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Problem",
-      },
-    ],
+    // problemsSolved: [
+    //   {
+    //     type: String, // Stores problemId
+    //   },
+    // ],
 
     totalPoints: {
       type: Number,
@@ -74,6 +78,21 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+userSchema.set("toJSON", { virtuals: true });
+userSchema.set("toObject", { virtuals: true });
+
+userSchema.virtual("raisedProblems", {
+  ref: "Problem",
+  localField: "problemsRaised",
+  foreignField: "problemId",
+});
+
+userSchema.virtual("solvedProblems", {
+  ref: "Problem",
+  localField: "problemsSolved",
+  foreignField: "problemId",
+});
+
 
 // Hash password before saving
 userSchema.pre("save", async function (next) {
@@ -81,7 +100,7 @@ userSchema.pre("save", async function (next) {
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
- 
+
 });
 
 

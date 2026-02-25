@@ -2,17 +2,21 @@ import mongoose from "mongoose";
 
 const solutionSchema = new mongoose.Schema(
   {
+    solutionId: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+
     // which problem this solution belongs to
     problem: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Problem",
+      type: String, // Stores problemId
       required: true,
     },
 
     // Who solved it
     solvedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, // Stores userId
       required: true,
     },
 
@@ -25,7 +29,7 @@ const solutionSchema = new mongoose.Schema(
     // optional attachments (screenshots, docs, ) url use karege (cloudinary )
     attachments: [
       {
-        type: String, 
+        type: String,
       },
     ],
 
@@ -63,6 +67,23 @@ const solutionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+solutionSchema.set("toJSON", { virtuals: true });
+solutionSchema.set("toObject", { virtuals: true });
+
+solutionSchema.virtual("problemDetails", {
+  ref: "Problem",
+  localField: "problem",
+  foreignField: "problemId",
+  justOne: true,
+});
+
+solutionSchema.virtual("solverDetails", {
+  ref: "User",
+  localField: "solvedBy",
+  foreignField: "userId",
+  justOne: true,
+});
 
 const Solution = mongoose.model("Solution", solutionSchema);
 

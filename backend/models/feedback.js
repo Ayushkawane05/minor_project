@@ -2,27 +2,29 @@ import mongoose from "mongoose";
 
 const feedbackSchema = new mongoose.Schema(
   {
+    feedbackId: {
+      type: String,
+      unique: true,
+      required: true,
+    },
+
     problem: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Problem",
+      type: String, //  problemId
       required: true,
     },
 
     solution: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Solution",
+      type: String, //  solutionId
       required: true,
     },
 
     givenBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, //  userId
       required: true,
     },
 
     receivedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String, //  userId
       required: true,
     },
 
@@ -34,15 +36,15 @@ const feedbackSchema = new mongoose.Schema(
     },
 
     //comment will go to ai
-    comment: { 
+    comment: {
       type: String,
       required: true,
       trim: true,
     },
 
-    // AI analysis result range define baki hai
+    // AI analysis result r
     sentimentScore: {
-      type: Number, 
+      type: Number,
       default: 0,
     },
 
@@ -53,10 +55,10 @@ const feedbackSchema = new mongoose.Schema(
     },
 
     // contribution impact score depend on kitne bar contribute kr raa (ai use can add)
-    contributionScore: {
-      type: Number,
-      default: 0,
-    },
+    // contributionScore: {
+    //   type: Number,
+    //   default: 0,
+    // },
 
     isValidatedByAI: {
       type: Boolean,
@@ -65,6 +67,37 @@ const feedbackSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+feedbackSchema.set("toJSON", { virtuals: true });
+feedbackSchema.set("toObject", { virtuals: true });
+
+feedbackSchema.virtual("problemDetails", {
+  ref: "Problem",
+  localField: "problem",
+  foreignField: "problemId",
+  justOne: true,
+});
+
+feedbackSchema.virtual("solutionDetails", {
+  ref: "Solution",
+  localField: "solution",
+  foreignField: "solutionId",
+  justOne: true,
+});
+
+feedbackSchema.virtual("giverDetails", {
+  ref: "User",
+  localField: "givenBy",
+  foreignField: "userId",
+  justOne: true,
+});
+
+feedbackSchema.virtual("receiverDetails", {
+  ref: "User",
+  localField: "receivedBy",
+  foreignField: "userId",
+  justOne: true,
+});
 
 const Feedback = mongoose.model("Feedback", feedbackSchema);
 
